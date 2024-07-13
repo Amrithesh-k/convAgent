@@ -4,7 +4,7 @@ import os
 from datetime import datetime
 from report_generator import SalesReport
 from email_sender import send_email
-from data_retreval import prepare_data_for_retrieval ,retrieve_relevant_info  
+from data_retreval import prepare_data_for_retrieval, retrieve_relevant_info
 import re
 
 class SalesReportAgent:
@@ -20,13 +20,14 @@ class SalesReportAgent:
         os.makedirs(self.report_path, exist_ok=True)
         
         # Prepare data for retrieval
-        prepare_data_for_retrieval(self)
+        self.inverted_index = prepare_data_for_retrieval(self.df)
 
     def process_input(self, user_input):
         user_input_lower = user_input.lower()
         
         if 'generate' in user_input_lower or "save" in user_input_lower:
-            return SalesReport.generate_report(self)
+            report = SalesReport(self.df, self.report_path)
+            return report.generate_report()
         elif 'send' in user_input_lower:
             match = re.search(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', user_input)
             email = match.group(0) if match else "example@email.com"
@@ -35,7 +36,7 @@ class SalesReportAgent:
             return self.generate_ai_response(user_input)
 
     def generate_ai_response(self, query):
-        context = self.retrieve_relevant_info(query)
+        context = retrieve_relevant_info(self.df, self.inverted_index, query)
         sales_summary = self.get_sales_summary()
         
         prompt = f"""You are an AI assistant for a sales report system. Use the following information to answer the user's question:

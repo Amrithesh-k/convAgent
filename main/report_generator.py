@@ -4,38 +4,29 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph
 from reportlab.lib.styles import getSampleStyleSheet
 from datetime import datetime
 import os
-import requests
 import pandas as pd
-import json
-import numpy as np
-
-def generate_ollama_content(prompt, model="llama3"):
-    url = "http://localhost:11434/api/generate"
-    data = {
-        "model": model,
-        "prompt": prompt,
-        "stream": False
-    }
-    try:
-        response = requests.post(url, json=data, timeout=30)
-        response.raise_for_status()
-        content = json.loads(response.text)
-        return content.get('response', 'Error: No response found')
-    except requests.RequestException as e:
-        return f"Error generating content: {str(e)}"
-    except json.JSONDecodeError:
-        return "Error: Invalid JSON response"
+import ollama
+import re
 
 class SalesReport:
     def __init__(self, df, report_path):
         self.df = df
         self.report_path = report_path
 
+    def sanitize_text(self, text):
+        # Remove non-breaking spaces and other potential problematic characters
+        text = text.replace('\xa0', ' ')
+        # Remove any other non-printable characters
+        text = re.sub(r'[^\x20-\x7E\n]', '', text)
+        return text
+
     def generate_report(self, start_date=None, end_date=None):
         report_file = os.path.join(self.report_path, f"daily_sales_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf")
         doc = SimpleDocTemplate(report_file, pagesize=letter)
         styles = getSampleStyleSheet()
         elements = []
+
+        model = "llama3"
 
         # Convert ORDERDATE to datetime and extract date
         self.df['ORDERDATE'] = pd.to_datetime(self.df['ORDERDATE'])
@@ -52,8 +43,9 @@ class SalesReport:
         daily_sales = daily_sales.sort_values('DATE')
 
         # Title (Ollama-generated)
-        title_prompt = "Generate a creative title for a daily sales report."
-        title = generate_ollama_content(title_prompt)
+        title_prompt = "Generate a creative title for a daily sales report. just give one title only and no other extra text should be generated"
+        title = ollama.generate(model=model, prompt=title_prompt)
+        title = self.sanitize_text(title['response'])
         elements.append(Paragraph(title, styles['Title']))
         
         elements.append(Paragraph(f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", styles['Normal']))
@@ -67,7 +59,8 @@ class SalesReport:
         - Lowest Daily Sales: ${daily_sales['SALES'].min():.2f} on {daily_sales.loc[daily_sales['SALES'].idxmin(), 'DATE'].strftime('%Y-%m-%d')}
         - Average Daily Sales: ${daily_sales['SALES'].mean():.2f}
         """
-        summary = generate_ollama_content(summary_prompt)
+        summary = ollama.generate(model=model, prompt=summary_prompt)
+        summary = self.sanitize_text(summary['response'])
         elements.append(Paragraph("Summary", styles['Heading2']))
         elements.append(Paragraph(summary, styles['Normal']))
 
@@ -98,7 +91,8 @@ class SalesReport:
         {daily_sales.to_string(index=False)}
         Focus on trends, patterns, and any notable fluctuations in daily sales.
         """
-        daily_sales_analysis = generate_ollama_content(daily_sales_prompt)
+        daily_sales_analysis = ollama.generate(model=model, prompt=daily_sales_prompt)
+        daily_sales_analysis = self.sanitize_text(daily_sales_analysis['response'])
         
         elements.append(Paragraph("Daily Sales Analysis", styles['Heading2']))
         elements.append(Paragraph(daily_sales_analysis, styles['Normal']))
@@ -127,7 +121,8 @@ class SalesReport:
         doc.build(elements)
         return f"The daily sales report has been saved: {report_file}"
 
-# Example usage:
+# Example usage (you can keep this commented out if it's in a separate file)
+"""
 if __name__ == "__main__":
     # Assume you have a DataFrame 'sales_df' with columns 'ORDERDATE' and 'SALES'
     sales_df = pd.DataFrame({
@@ -139,3 +134,4 @@ if __name__ == "__main__":
     sales_report = SalesReport(sales_df, report_path)
     result = sales_report.generate_report(start_date='2024-01-01', end_date='2024-03-31')
     print(result)
+"""
